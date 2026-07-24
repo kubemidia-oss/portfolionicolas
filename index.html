@@ -62,7 +62,8 @@
   /* ---------- hero scrub ---------- */
   .nv-hero{position:relative;height:600vh}          /* scroll length; more = slower flight */
   .nv-stage{position:sticky;top:0;height:100vh;width:100%;overflow:hidden;background:var(--bg)}
-  .nv-stage video,.nv-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 42%}
+  .nv-stage video,.nv-stage canvas,.nv-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 42%}
+  .nv-stage canvas{display:block}
   .nv-poster{background:var(--bg) center/cover no-repeat;background-image:url('assets/images/poster.jpg');transition:opacity .5s ease}
 
   /* legibility layers — the key to readable copy over bright video */
@@ -130,7 +131,7 @@
   @media (prefers-reduced-motion: reduce){
     .nv-hero{height:auto}
     .nv-stage{position:relative;height:auto;min-height:100vh}
-    .nv-stage video{display:none}
+    .nv-stage video,.nv-stage canvas{display:none}
     .nv-copy{position:static;padding:0}
     .nv-phrase{position:relative;left:0;right:0;opacity:1;transform:none;filter:none;
       padding:56px clamp(24px,7vw,120px)}
@@ -378,7 +379,7 @@
   <section class="nv-hero" id="hero">
     <div class="nv-stage">
       <div class="nv-poster" id="poster"></div>
-      <video id="film" muted playsinline preload="auto" disablepictureinpicture></video>
+      <canvas id="film"></canvas>
       <div class="nv-scrim"></div>
       <div class="nv-vignette"></div>
       <div class="nv-copy" id="copy"></div>
@@ -595,31 +596,45 @@
   });
 
   var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var duration=8, ready=false, seeking=false, primed=false, targetT=0, curT=0;
 
-  // Load the whole (small) clip into memory as a Blob → guaranteed fully seekable with
-  // ZERO network during scrub, so it can never "oscillate" between working and stalling on
-  // a deployed host. The poster stays until the blob is ready, so the hero looks intentional
-  // while it loads (~1s for a few MB). Falls back to a direct src only if the fetch fails.
-  film.preload='auto';
-  (function loadFilm(tries){
-    fetch(VIDEO_SRC).then(function(r){ if(!r.ok) throw 0; return r.blob(); })
-      .then(function(b){ film.src=URL.createObjectURL(b); })
-      .catch(function(){ if(tries>0) setTimeout(function(){ loadFilm(tries-1); },1500); });
-  })(4);
+  // ---- IMAGE-SEQUENCE scrub (Apple-style). Frames are plain images: swapping one is
+  // instant — no video decoder, no seeking, so it never stalls or oscillates on any device
+  // or host. They preload in the background and simply appear as they arrive; the poster
+  // covers until the first frame is in. ----
+  var ctx=film.getContext('2d');
+  var FRAMES=97, FBASE=isMobile?"assets/frames-m/":"assets/frames/";
+  var pad3=function(n){return ('00'+n).slice(-3);};
+  var imgs=new Array(FRAMES), ready=false, curF=0, targetF=0, lastF=-1;
+  var dpr=Math.min(window.devicePixelRatio||1,2);
 
-  film.addEventListener('loadedmetadata',function(){
-    if(film.duration&&isFinite(film.duration)) duration=film.duration;
-    ready=true;
-    try{ if(film.currentTime<0.02) film.currentTime=0.03; }catch(e){}  // paint first frame
-  });
-  film.addEventListener('seeked',function(){ seeking=false; poster.style.opacity=0; });
-  film.addEventListener('error',function(){ poster.style.opacity=1; });
+  function sizeCanvas(){
+    film.width=Math.max(1,Math.round(film.clientWidth*dpr));
+    film.height=Math.max(1,Math.round(film.clientHeight*dpr));
+    lastF=-1; // force a redraw at the new size
+  }
+  function pickImg(idx){
+    if(idx<0)idx=0; if(idx>FRAMES-1)idx=FRAMES-1;
+    if(imgs[idx]&&imgs[idx].naturalWidth) return imgs[idx];
+    for(var d=1;d<FRAMES;d++){                 // nearest already-loaded frame
+      if(imgs[idx-d]&&imgs[idx-d].naturalWidth) return imgs[idx-d];
+      if(imgs[idx+d]&&imgs[idx+d].naturalWidth) return imgs[idx+d];
+    }
+    return null;
+  }
+  function draw(idx){
+    var im=pickImg(idx); if(!im) return;
+    var cw=film.width,ch=film.height,iw=im.naturalWidth,ih=im.naturalHeight;
+    var s=Math.max(cw/iw,ch/ih), w=iw*s, h=ih*s;
+    ctx.drawImage(im,(cw-w)/2,(ch-h)*0.42,w,h);   // cover, biased to 42% vertically (his face)
+  }
 
-  function primeOnce(){ if(primed)return; primed=true;
-    var p=film.play(); if(p&&p.then)p.then(function(){film.pause();}).catch(function(){}); else{try{film.pause();}catch(e){}} }
-  window.addEventListener('touchstart',primeOnce,{once:true,passive:true});
-  window.addEventListener('mousedown',primeOnce,{once:true});
+  for(var fi=0;fi<FRAMES;fi++){(function(i){
+    var im=new Image();
+    im.onload=function(){ if(!ready){ ready=true; sizeCanvas(); draw(0); poster.style.opacity=0; } };
+    im.src=FBASE+'f_'+pad3(i+1)+'.webp';
+    imgs[i]=im;
+  })(fi);}
+  window.addEventListener('resize',function(){ sizeCanvas(); draw(Math.round(curF)); });
 
   function prog(){
     var range=hero.offsetHeight-window.innerHeight;
@@ -627,7 +642,6 @@
     var p=(window.pageYOffset-hero.offsetTop)/range;
     return p<0?0:(p>1?1:p);
   }
-  var activeIdx=-1;
   function paint(p){
     for(var i=0;i<PHRASES.length;i++){
       var on=(p>=PHRASES[i].start&&p<PHRASES[i].end)?1:0;
@@ -642,15 +656,11 @@
     if(hint) hint.style.opacity=p>0.02?0:1;
     paint(p);
     if(ready){
-      targetT=p*(duration-0.05);
-      curT+=(targetT-curT)*0.22;
-      if(Math.abs(targetT-curT)<0.003) curT=targetT;
-      // coalesce seeks: never queue a new one while the decoder is still seeking
-      // (prevents thrashing when seeks hit the network on a deployed host)
-      if(!seeking&&Math.abs(film.currentTime-curT)>0.006){
-        seeking=true;
-        try{film.currentTime=curT;}catch(e){seeking=false;}
-      }
+      targetF=p*(FRAMES-1);
+      curF+=(targetF-curF)*0.24;
+      if(Math.abs(targetF-curF)<0.02) curF=targetF;
+      var rf=Math.round(curF);
+      if(rf!==lastF){ lastF=rf; draw(rf); }
     }
     requestAnimationFrame(loop);
   }
