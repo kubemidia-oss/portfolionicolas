@@ -587,10 +587,16 @@
   var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var duration=8, ready=false, seeking=false, primed=false, targetT=0, curT=0;
 
-  // Progressive load — the host serves byte ranges (GitHub Pages / most static hosts do),
-  // so scrubbing works as soon as metadata is in, no full-file download to block it.
+  // Load the whole (small) clip into memory as a Blob → guaranteed fully seekable with
+  // ZERO network during scrub, so it can never "oscillate" between working and stalling on
+  // a deployed host. The poster stays until the blob is ready, so the hero looks intentional
+  // while it loads (~1s for a few MB). Falls back to a direct src only if the fetch fails.
   film.preload='auto';
-  film.src=VIDEO_SRC;
+  (function loadFilm(tries){
+    fetch(VIDEO_SRC).then(function(r){ if(!r.ok) throw 0; return r.blob(); })
+      .then(function(b){ film.src=URL.createObjectURL(b); })
+      .catch(function(){ if(tries>0) setTimeout(function(){ loadFilm(tries-1); },1500); });
+  })(4);
 
   film.addEventListener('loadedmetadata',function(){
     if(film.duration&&isFinite(film.duration)) duration=film.duration;
