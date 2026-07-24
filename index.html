@@ -48,13 +48,14 @@
   .nv-top{
     position:fixed;top:0;left:0;right:0;z-index:40;
     display:flex;align-items:center;justify-content:center;
-    padding:18px clamp(20px,5vw,60px);pointer-events:none;
-    background:linear-gradient(180deg,rgba(10,12,17,.3),rgba(10,12,17,.04));
-    backdrop-filter:blur(14px) saturate(120%);-webkit-backdrop-filter:blur(14px) saturate(120%);
+    padding:16px clamp(20px,5vw,60px);pointer-events:none;
   }
   .nv-brand{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;
+    padding:13px 30px;border-radius:22px;
+    background:rgba(10,12,17,.28);border:1px solid rgba(255,255,255,.1);
+    backdrop-filter:blur(16px) saturate(120%);-webkit-backdrop-filter:blur(16px) saturate(120%);
     font-family:"StretchPro",var(--font-display);font-weight:400;letter-spacing:.02em;
-    font-size:clamp(15px,1.7vw,21px);line-height:1;color:#fff;text-shadow:0 2px 30px rgba(0,0,0,.7)}
+    font-size:clamp(15px,1.7vw,21px);line-height:1;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.55)}
   .nv-brand small{font-family:var(--font-body);font-weight:500;font-size:10px;letter-spacing:.3em;
     text-transform:uppercase;color:var(--ink-soft);text-shadow:0 1px 14px rgba(0,0,0,.6)}
 
@@ -586,15 +587,18 @@
   var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var duration=8, ready=false, seeking=false, primed=false, targetT=0, curT=0;
 
-  fetch(VIDEO_SRC).then(function(r){return r.blob();}).then(function(b){
-    film.src=URL.createObjectURL(b);
-  }).catch(function(){ film.src=VIDEO_SRC; });
+  // Progressive load — the host serves byte ranges (GitHub Pages / most static hosts do),
+  // so scrubbing works as soon as metadata is in, no full-file download to block it.
+  film.preload='auto';
+  film.src=VIDEO_SRC;
 
   film.addEventListener('loadedmetadata',function(){
     if(film.duration&&isFinite(film.duration)) duration=film.duration;
-    ready=true; try{film.currentTime=0.0001;}catch(e){}
+    ready=true;
+    try{ if(film.currentTime<0.02) film.currentTime=0.03; }catch(e){}  // paint first frame
   });
   film.addEventListener('seeked',function(){ seeking=false; poster.style.opacity=0; });
+  film.addEventListener('error',function(){ poster.style.opacity=1; });
 
   function primeOnce(){ if(primed)return; primed=true;
     var p=film.play(); if(p&&p.then)p.then(function(){film.pause();}).catch(function(){}); else{try{film.pause();}catch(e){}} }
@@ -625,9 +629,10 @@
       targetT=p*(duration-0.05);
       curT+=(targetT-curT)*0.22;
       if(Math.abs(targetT-curT)<0.003) curT=targetT;
-      var gate=isMobile?!seeking:true;
-      if(gate&&Math.abs(film.currentTime-curT)>0.006){
-        if(isMobile) seeking=true;
+      // coalesce seeks: never queue a new one while the decoder is still seeking
+      // (prevents thrashing when seeks hit the network on a deployed host)
+      if(!seeking&&Math.abs(film.currentTime-curT)>0.006){
+        seeking=true;
         try{film.currentTime=curT;}catch(e){seeking=false;}
       }
     }
