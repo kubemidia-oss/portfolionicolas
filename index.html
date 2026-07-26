@@ -762,17 +762,40 @@
     });
   });
 
-  // autoplay reel videos only while visible
-  var vids=track.querySelectorAll('video');
-  if('IntersectionObserver' in window){
-    var vio=new IntersectionObserver(function(es){
-      es.forEach(function(e){ var v=e.target;
-        if(e.isIntersecting){ var p=v.play&&v.play(); if(p&&p.catch)p.catch(function(){}); }
-        else if(v.pause){ v.pause(); }
-      });
-    },{root:null,threshold:0.35});
-    vids.forEach(function(v){ vio.observe(v); });
+  // let images decode off the main thread (no hitch when they enter view)
+  track.querySelectorAll('img').forEach(function(im){ try{im.decoding='async';}catch(e){} });
+
+  // Reel videos, mobile-friendly: decoding a video while the track slides is what makes the
+  // section feel heavy. So we PAUSE every reel while it's moving (the slide then composites
+  // cheap, static frames → buttery) and play ONLY the centred reel once the scroll settles.
+  // Result: smooth to slide, and the video you land on comes alive. Immersive + light.
+  var vids=[].slice.call(track.querySelectorAll('video'));
+  var settleT=null, activeVid=null;
+  function centeredVid(){
+    var cx=window.innerWidth/2, best=null, bd=Infinity;
+    for(var i=0;i<vids.length;i++){
+      var r=vids[i].getBoundingClientRect();
+      if(r.right<=0||r.left>=window.innerWidth) continue;   // off-screen horizontally
+      var d=Math.abs((r.left+r.right)/2-cx);
+      if(d<bd){ bd=d; best=vids[i]; }
+    }
+    return best;
   }
+  function playCentered(){
+    var v=centeredVid();
+    if(v&&v!==activeVid){
+      if(activeVid&&!activeVid.paused) activeVid.pause();
+      activeVid=v; var p=v.play&&v.play(); if(p&&p.catch)p.catch(function(){});
+    }
+  }
+  function onReelScroll(){
+    for(var i=0;i<vids.length;i++){ if(!vids[i].paused) vids[i].pause(); }
+    activeVid=null;
+    if(settleT) clearTimeout(settleT);
+    settleT=setTimeout(playCentered,140);   // play the centred reel ~140ms after you stop
+  }
+  window.addEventListener('scroll',onReelScroll,{passive:true});
+  setTimeout(playCentered,700);
 })();
 </script>
 </body>
