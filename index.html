@@ -515,20 +515,6 @@
       </div>
     </section>
 
-    <!-- ===== TRAJETÓRIA ===== -->
-    <section class="sec" id="trajetoria">
-      <div class="sec-head reveal">
-        <span class="sec-eyebrow">Trajetória</span>
-        <h2 class="sec-title">Da arte à estratégia, <b>crescendo junto</b>.</h2>
-      </div>
-      <div class="tl">
-        <div class="tl-item reveal"><div class="tl-when">2025–2026</div><div class="tl-role">Gestor de Marketing</div><div class="tl-org">Coletivo Coworking · Porto Alegre</div><div class="tl-desc">Estratégia, tráfego pago, conteúdo, e-mail, CRM e automações com IA. Geração de leads e crescimento da marca.</div></div>
-        <div class="tl-item reveal"><div class="tl-when">2023–2024</div><div class="tl-role">Head de Marketing</div><div class="tl-org">Emprestae Promotora de Crédito</div><div class="tl-desc">Estratégia, tráfego pago, social media, criativos, chatbot, RD CRM &amp; Marketing e landing pages.</div></div>
-        <div class="tl-item reveal"><div class="tl-when">2022–2023</div><div class="tl-role">Gestor de Tráfego</div><div class="tl-org">Bonecário · São Leopoldo</div><div class="tl-desc">Criativos e tráfego no e-commerce e redes sociais, funis de venda, e-mail marketing e automações.</div></div>
-        <div class="tl-item reveal"><div class="tl-when">2021</div><div class="tl-role">Diretor de Arte</div><div class="tl-org">John and Clark</div><div class="tl-desc">Criação de artes, branding, e-mail marketing e desenvolvimento de novos produtos.</div></div>
-        <div class="tl-item reveal"><div class="tl-when">2017–2021</div><div class="tl-role">Fundador</div><div class="tl-org">Space · Agência de Marketing Digital</div><div class="tl-desc">Agência própria com atuação full-stack em marketing digital: estratégia, tráfego, criação, sites e gestão de clientes.</div></div>
-      </div>
-    </section>
   </main>
 
   <!-- ===== CONTATO ===== -->
@@ -605,11 +591,13 @@
   var FRAMES=97, FBASE=isMobile?"assets/frames-m/":"assets/frames/";
   var pad3=function(n){return ('00'+n).slice(-3);};
   var imgs=new Array(FRAMES), ready=false, curF=0, targetF=0, lastF=-1;
-  var dpr=Math.min(window.devicePixelRatio||1,2);
+  var dpr=Math.min(window.devicePixelRatio||1,3);   // match high-DPI screens (phones are 3x)
 
   function sizeCanvas(){
     film.width=Math.max(1,Math.round(film.clientWidth*dpr));
     film.height=Math.max(1,Math.round(film.clientHeight*dpr));
+    ctx.imageSmoothingEnabled=true;                 // resizing the canvas resets these
+    ctx.imageSmoothingQuality='high';               // smooth (not blocky) upscaling
     lastF=-1; // force a redraw at the new size
   }
   function pickImg(idx){
